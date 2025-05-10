@@ -128,6 +128,9 @@ class PasterApp:
             w, h = item["size"]
             crop = grid.crop((x, y, x + w, y + h))
             out_path = os.path.join(output_dir, item["filename"])
+            ext = os.path.splitext(out_path)[1].lower()
+            if ext in ['.jpg', '.jpeg']:
+                crop = crop.convert("RGB")
             crop.save(out_path)
 
 if __name__ == "__main__":
