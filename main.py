@@ -129,9 +129,13 @@ class PasterApp:
             crop = grid.crop((x, y, x + w, y + h))
             out_path = os.path.join(output_dir, item["filename"])
             ext = os.path.splitext(out_path)[1].lower()
+            
+            # 获取原图的 DPI 并保留
+            original_dpi = grid.info.get('dpi', (300, 300))  # 默认 DPI 为 300
+            
             if ext in ['.jpg', '.jpeg']:
                 crop = crop.convert("RGB")
-            crop.save(out_path)
+            crop.save(out_path, dpi=original_dpi)
 
 if __name__ == "__main__":
     root = Tk()
