@@ -1,3 +1,4 @@
+# 拼图还原助手（还原逻辑完整匹配 JSON+PNG）
 import os
 import json
 import math
@@ -10,21 +11,22 @@ def create_image_grid(image_paths, output_path, metadata_path):
     cols = math.ceil(math.sqrt(count))
     rows = math.ceil(count / cols)
 
-    widths = [img.width for img in images]
-    heights = [img.height for img in images]
+    # 统一图像高度
+    target_height = max(img.height for img in images)
+    scaled_images = []
+    for img in images:
+        scale = target_height / img.height
+        new_size = (int(img.width * scale), target_height)
+        scaled_images.append(img.resize(new_size, Image.LANCZOS))
 
     col_widths = [0] * cols
-    row_heights = [0] * rows
-
-    for idx, img in enumerate(images):
-        row = idx // cols
-        col = idx % cols
+    row_heights = [target_height] * rows
+    for i, img in enumerate(scaled_images):
+        col = i % cols
         col_widths[col] = max(col_widths[col], img.width)
-        row_heights[row] = max(row_heights[row], img.height)
 
     total_width = sum(col_widths)
-    total_height = sum(row_heights)
-
+    total_height = target_height * rows
     result = Image.new('RGBA', (total_width, total_height), (255, 255, 255, 0))
 
     metadata = []
@@ -35,7 +37,7 @@ def create_image_grid(image_paths, output_path, metadata_path):
             idx = row * cols + col
             if idx >= count:
                 break
-            img = images[idx]
+            img = scaled_images[idx]
             result.paste(img, (x, y))
             metadata.append({
                 'filename': os.path.basename(image_paths[idx]),
@@ -43,7 +45,7 @@ def create_image_grid(image_paths, output_path, metadata_path):
                 'size': [img.width, img.height]
             })
             x += col_widths[col]
-        y += row_heights[row]
+        y += target_height
 
     result.save(output_path)
     with open(metadata_path, 'w', encoding='utf-8') as f:
@@ -91,7 +93,7 @@ class App:
             return
         metadata_path = output_path.replace(".png", ".json")
         create_image_grid(self.image_paths, output_path, metadata_path)
-        messagebox.showinfo("完成", f"已保存到\\n{output_path}\\n{metadata_path}")
+        messagebox.showinfo("完成", f"已保存到\n{output_path}\n{metadata_path}")
 
     def choose_restore_sources(self):
         files = filedialog.askopenfilenames(filetypes=[("拼接图和元数据", "*.png *.json")])
@@ -109,7 +111,7 @@ class App:
             messagebox.showerror("错误", "请先选择拼图文件、元数据文件和输出路径")
             return
         restore_images(self.grid_path, self.metadata_path, self.restore_dir)
-        messagebox.showinfo("完成", f"图像已还原至：\\n{self.restore_dir}")
+        messagebox.showinfo("完成", f"图像已还原至：\n{self.restore_dir}")
 
 if __name__ == '__main__':
     root = Tk()
