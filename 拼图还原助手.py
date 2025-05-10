@@ -1,4 +1,3 @@
-# 拼图还原助手（增强交互版）
 import os
 import json
 import math
@@ -11,22 +10,21 @@ def create_image_grid(image_paths, output_path, metadata_path):
     cols = math.ceil(math.sqrt(count))
     rows = math.ceil(count / cols)
 
-    # 统一图像高度
-    target_height = max(img.height for img in images)
-    scaled_images = []
-    for img in images:
-        scale = target_height / img.height
-        new_size = (int(img.width * scale), target_height)
-        scaled_images.append(img.resize(new_size, Image.LANCZOS))
+    widths = [img.width for img in images]
+    heights = [img.height for img in images]
 
     col_widths = [0] * cols
-    row_heights = [target_height] * rows
-    for i, img in enumerate(scaled_images):
-        col = i % cols
+    row_heights = [0] * rows
+
+    for idx, img in enumerate(images):
+        row = idx // cols
+        col = idx % cols
         col_widths[col] = max(col_widths[col], img.width)
+        row_heights[row] = max(row_heights[row], img.height)
 
     total_width = sum(col_widths)
-    total_height = target_height * rows
+    total_height = sum(row_heights)
+
     result = Image.new('RGBA', (total_width, total_height), (255, 255, 255, 0))
 
     metadata = []
@@ -37,7 +35,7 @@ def create_image_grid(image_paths, output_path, metadata_path):
             idx = row * cols + col
             if idx >= count:
                 break
-            img = scaled_images[idx]
+            img = images[idx]
             result.paste(img, (x, y))
             metadata.append({
                 'filename': os.path.basename(image_paths[idx]),
@@ -45,7 +43,7 @@ def create_image_grid(image_paths, output_path, metadata_path):
                 'size': [img.width, img.height]
             })
             x += col_widths[col]
-        y += target_height
+        y += row_heights[row]
 
     result.save(output_path)
     with open(metadata_path, 'w', encoding='utf-8') as f:
@@ -77,7 +75,7 @@ class App:
         Label(root, text="拼图还原助手").pack()
         Button(root, text="选择图片拼图", command=self.choose_images).pack()
         Button(root, text="拼图", command=self.do_merge).pack()
-        Button(root, text="选择拼图还原文件", command=self.choose_grid).pack()
+        Button(root, text="选择拼接图和JSON", command=self.choose_restore_sources).pack()
         Button(root, text="选择保存文件夹", command=self.choose_restore_dir).pack()
         Button(root, text="开始还原", command=self.do_restore).pack()
 
@@ -93,22 +91,25 @@ class App:
             return
         metadata_path = output_path.replace(".png", ".json")
         create_image_grid(self.image_paths, output_path, metadata_path)
-        messagebox.showinfo("完成", f"已保存到\n{output_path}\n{metadata_path}")
+        messagebox.showinfo("完成", f"已保存到\\n{output_path}\\n{metadata_path}")
 
-    def choose_grid(self):
-        self.grid_path = filedialog.askopenfilename(filetypes=[("PNG", "*.png")])
-        if self.grid_path:
-            self.metadata_path = self.grid_path.replace(".png", ".json")
+    def choose_restore_sources(self):
+        files = filedialog.askopenfilenames(filetypes=[("拼接图和元数据", "*.png *.json")])
+        for f in files:
+            if f.lower().endswith(".png"):
+                self.grid_path = f
+            elif f.lower().endswith(".json"):
+                self.metadata_path = f
 
     def choose_restore_dir(self):
         self.restore_dir = filedialog.askdirectory()
 
     def do_restore(self):
         if not self.grid_path or not self.metadata_path or not self.restore_dir:
-            messagebox.showerror("错误", "请先选择拼图文件和保存文件夹")
+            messagebox.showerror("错误", "请先选择拼图文件、元数据文件和输出路径")
             return
         restore_images(self.grid_path, self.metadata_path, self.restore_dir)
-        messagebox.showinfo("完成", f"图像已还原至：\n{self.restore_dir}")
+        messagebox.showinfo("完成", f"图像已还原至：\\n{self.restore_dir}")
 
 if __name__ == '__main__':
     root = Tk()
