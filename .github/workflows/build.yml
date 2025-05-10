@@ -29,7 +29,7 @@ jobs:
           pyinstaller --noconfirm --onefile --windowed main.py
 
       - name: 上传构建产物
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4.6.2
         with:
           name: PasterApp.exe
           path: dist/main.exe
