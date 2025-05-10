@@ -1,4 +1,4 @@
-# 拼图还原助手（修复版）
+# 拼图还原助手（增强交互版）
 import os
 import json
 import math
@@ -72,11 +72,14 @@ class App:
         self.image_paths = []
         self.grid_path = ""
         self.metadata_path = ""
+        self.restore_dir = ""
+
         Label(root, text="拼图还原助手").pack()
         Button(root, text="选择图片拼图", command=self.choose_images).pack()
         Button(root, text="拼图", command=self.do_merge).pack()
-        Button(root, text="选择拼图还原", command=self.choose_grid).pack()
-        Button(root, text="还原", command=self.do_restore).pack()
+        Button(root, text="选择拼图还原文件", command=self.choose_grid).pack()
+        Button(root, text="选择保存文件夹", command=self.choose_restore_dir).pack()
+        Button(root, text="开始还原", command=self.do_restore).pack()
 
     def choose_images(self):
         self.image_paths = filedialog.askopenfilenames(filetypes=[("Images", "*.png;*.jpg;*.jpeg")])
@@ -97,15 +100,15 @@ class App:
         if self.grid_path:
             self.metadata_path = self.grid_path.replace(".png", ".json")
 
+    def choose_restore_dir(self):
+        self.restore_dir = filedialog.askdirectory()
+
     def do_restore(self):
-        if not self.grid_path or not self.metadata_path:
-            messagebox.showerror("错误", "请先选择拼图文件")
+        if not self.grid_path or not self.metadata_path or not self.restore_dir:
+            messagebox.showerror("错误", "请先选择拼图文件和保存文件夹")
             return
-        output_dir = filedialog.askdirectory()
-        if not output_dir:
-            return
-        restore_images(self.grid_path, self.metadata_path, output_dir)
-        messagebox.showinfo("完成", f"图像已还原至：\n{output_dir}")
+        restore_images(self.grid_path, self.metadata_path, self.restore_dir)
+        messagebox.showinfo("完成", f"图像已还原至：\n{self.restore_dir}")
 
 if __name__ == '__main__':
     root = Tk()
