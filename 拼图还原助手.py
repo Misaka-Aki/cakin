@@ -1,7 +1,4 @@
-# 拼图还原助手（简化版）
-# 支持图像拼接为网格，并生成元数据用于还原
-# GUI: Tkinter
-
+# 拼图还原助手（简化版 GUI）
 import os
 import json
 import math
@@ -46,7 +43,6 @@ def create_image_grid(image_paths, output_path, metadata_path):
     with open(metadata_path, 'w', encoding='utf-8') as f:
         json.dump(metadata, f, indent=2, ensure_ascii=False)
 
-
 def restore_images(grid_path, metadata_path, output_dir):
     with open(metadata_path, 'r', encoding='utf-8') as f:
         meta = json.load(f)
@@ -57,7 +53,7 @@ def restore_images(grid_path, metadata_path, output_dir):
         crop = grid.crop((x, y, x + w, y + h))
         crop.save(os.path.join(output_dir, item['filename']))
 
-# 简单 GUI
+# GUI
 class App:
     def __init__(self, root):
         self.root = root
@@ -94,3 +90,4 @@ if __name__ == '__main__':
     root.title("拼图还原助手")
     app = App(root)
     root.mainloop()
+
