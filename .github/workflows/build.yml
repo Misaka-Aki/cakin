@@ -1,33 +1,33 @@
-# .github/workflows/build.yml
 name: Build EXE
 
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
       - name: Install dependencies
         run: |
-          pip install pyinstaller pillow
+          pip install pillow pyinstaller
 
-      - name: Build with PyInstaller
+      - name: Build EXE with PyInstaller
         run: |
-          pyinstaller --noconfirm --onefile --windowed 拼图还原助手.py
+          pyinstaller --noconfirm --onefile --windowed "拼图还原助手.py"
 
-      - name: Upload EXE as artifact
-        uses: actions/upload-artifact@v3
+      - name: Upload EXE artifact
+        uses: actions/upload-artifact@v3.1.3
         with:
           name: 拼图还原助手
           path: dist/拼图还原助手.exe
