@@ -27,7 +27,7 @@ jobs:
           pyinstaller --noconfirm --onefile --windowed "拼图还原助手.py"
 
       - name: Upload EXE artifact
-        uses: actions/upload-artifact@v3.1.3
+        uses: actions/upload-artifact@v4.6.2
         with:
           name: 拼图还原助手
           path: dist/拼图还原助手.exe
