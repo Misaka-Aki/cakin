@@ -8,7 +8,7 @@ class PasterApp:
     def __init__(self, root):
         self.root = root
         root.title("拼图还原助手")
-        root.geometry("600x300")
+        root.geometry("600x350")
         self.init_ui()
 
     def init_ui(self):
@@ -25,9 +25,12 @@ class PasterApp:
 
     def init_merge_tab(self):
         self.image_paths = []
+        self.output_path = ""
 
         ttk.Label(self.merge_tab, text="选择要拼接的图片").pack(pady=10)
         Button(self.merge_tab, text="选择图片", command=self.select_images).pack()
+        Button(self.merge_tab, text="选择保存文件夹", command=self.select_output_folder).pack(pady=10)
+        Button(self.merge_tab, text="选择保存文件名", command=self.select_output_filename).pack(pady=10)
         Button(self.merge_tab, text="开始拼接", command=self.start_merge).pack(pady=10)
 
     def init_restore_tab(self):
@@ -46,17 +49,24 @@ class PasterApp:
         if self.image_paths:
             messagebox.showinfo("选中图片数", f"共选中 {len(self.image_paths)} 张图片")
 
+    def select_output_folder(self):
+        self.output_folder = filedialog.askdirectory()
+        if self.output_folder:
+            messagebox.showinfo("文件夹选中", f"已选择输出文件夹：{self.output_folder}")
+
+    def select_output_filename(self):
+        self.output_filename = filedialog.asksaveasfilename(defaultextension=".png", filetypes=[("PNG 图像", "*.png")])
+        if self.output_filename:
+            messagebox.showinfo("文件名选中", f"已选择输出文件名：{self.output_filename}")
+
     def start_merge(self):
-        if not self.image_paths:
-            messagebox.showerror("错误", "请先选择图片")
+        if not self.image_paths or not self.output_filename:
+            messagebox.showerror("错误", "请先选择图片和保存文件名")
             return
-        save_path = filedialog.asksaveasfilename(defaultextension=".png")
-        if not save_path:
-            return
-        json_path = save_path.replace(".png", ".json")
+        json_path = self.output_filename.replace(".png", ".json")
         try:
-            self.merge_images(self.image_paths, save_path, json_path)
-            messagebox.showinfo("完成", f"拼接完成！\n图片: {save_path}\n数据: {json_path}")
+            self.merge_images(self.image_paths, self.output_filename, json_path)
+            messagebox.showinfo("完成", f"拼接完成！\n图片: {self.output_filename}\n数据: {json_path}")
         except Exception as e:
             messagebox.showerror("拼接失败", str(e))
 
@@ -128,16 +138,9 @@ class PasterApp:
             w, h = item["size"]
             crop = grid.crop((x, y, x + w, y + h))
             out_path = os.path.join(output_dir, item["filename"])
-            ext = os.path.splitext(out_path)[1].lower()
-            
-            # 获取原图的 DPI 并保留
-            original_dpi = grid.info.get('dpi', (300, 300))  # 默认 DPI 为 300
-            
-            if ext in ['.jpg', '.jpeg']:
-                crop = crop.convert("RGB")
-                crop.save(out_path, quality=95, dpi=original_dpi)  # JPEG 保存时指定质量
-            else:
-                crop.save(out_path, dpi=original_dpi, optimize=True, compress_level=9)  # PNG 优化保存
+
+            # 所有还原图片统一保存为 PNG 格式
+            crop.save(out_path, "PNG")  # 无论原始格式如何，全部输出为 PNG 格式
 
 if __name__ == "__main__":
     root = Tk()
