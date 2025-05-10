@@ -135,7 +135,9 @@ class PasterApp:
             
             if ext in ['.jpg', '.jpeg']:
                 crop = crop.convert("RGB")
-            crop.save(out_path, dpi=original_dpi)
+                crop.save(out_path, quality=95, dpi=original_dpi)  # JPEG 保存时指定质量
+            else:
+                crop.save(out_path, dpi=original_dpi, optimize=True, compress_level=9)  # PNG 优化保存
 
 if __name__ == "__main__":
     root = Tk()
