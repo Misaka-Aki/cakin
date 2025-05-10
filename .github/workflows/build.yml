@@ -1,4 +1,4 @@
-name: Build EXE
+name: Build Windows EXE
 
 on:
   push:
@@ -10,24 +10,26 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: 检出源码
+        uses: actions/checkout@v3
 
-      - name: Set up Python
+      - name: 安装 Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.11'
 
-      - name: Install dependencies
+      - name: 安装依赖
         run: |
-          pip install pillow pyinstaller
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
 
-      - name: Build EXE with PyInstaller
+      - name: 使用 PyInstaller 打包
         run: |
-          pyinstaller --noconfirm --onefile --windowed "拼图还原助手.py"
+          pyinstaller --noconfirm --onefile --windowed main.py
 
-      - name: Upload EXE artifact
-        uses: actions/upload-artifact@v4.6.2
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v3
         with:
-          name: 拼图还原助手
-          path: dist/拼图还原助手.exe
+          name: PasterApp.exe
+          path: dist/main.exe
