@@ -1,7 +1,7 @@
 import os
 import math
 import json
-from tkinter import Tk, Label, Button, Entry, messagebox, ttk
+from tkinter import Tk, Label, Button, Entry, messagebox, filedialog, ttk
 from PIL import Image
 from collections import deque
 
@@ -49,9 +49,15 @@ class SmartPasterApp:
 
     def select_images(self):
         self.selected_images = list(
-            filedialog.askopenfilenames(filetypes=[("Images", "*.jpg;*.jpeg;*.png")])
+            filedialog.askopenfilenames(
+                title="选择图片",
+                filetypes=[("图像文件", "*.jpg *.jpeg *.png *.bmp *.webp *.tiff")]
+            )
         )
-        messagebox.showinfo("选中图片", f"已选中 {len(self.selected_images)} 张图片")
+        if self.selected_images:
+            messagebox.showinfo("选中图片", f"已选中 {len(self.selected_images)} 张图片")
+        else:
+            messagebox.showwarning("未选择", "未选择任何图片")
 
     def start_merge(self):
         try:
