@@ -98,13 +98,14 @@ class SmartPasterApp:
             json_name = f"拼接{idx + 1}.json"
 
             img_path = os.path.join(self.merge_dir, img_name)
+            json_path = os.path.join(self.merge_dir, json_name)
             out_img.save(img_path)
 
             # 保存 JSON 文件
-            json_path = os.path.join(self.merge_dir, json_name)
             with open(json_path, 'w', encoding='utf-8') as f:
                 json.dump(meta, f, indent=2, ensure_ascii=False)
 
+            # 输出拼接结果的路径
             print(f"拼接图保存到: {os.path.abspath(img_path)}")
             print(f"JSON 文件保存到: {os.path.abspath(json_path)}")
 
@@ -141,7 +142,6 @@ class SmartPasterApp:
                     "position": [x, y],
                     "size": [img.width, img.height],
                     "original_mode": img.mode,
-                    "dpi": img.info.get("dpi", (72, 72)),
                     "format": os.path.splitext(path)[1][1:].lower()
                 })
                 x += widths[c]
@@ -171,11 +171,11 @@ class SmartPasterApp:
 
             if item.get("original_mode"):
                 region = region.convert(item["original_mode"])
-            dpi = item.get("dpi", (72, 72))
 
+            # 直接保存拆分后的图片，忽略 DPI 相关处理
             name, ext = os.path.splitext(item["filename"])
             new_name = f"{name}s.{item['format']}"
-            region.save(os.path.join(self.restore_dir, new_name), dpi=dpi)
+            region.save(os.path.join(self.restore_dir, new_name))
 
 if __name__ == '__main__':
     root = TkinterDnD.Tk()
