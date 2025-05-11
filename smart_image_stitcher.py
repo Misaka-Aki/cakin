@@ -81,28 +81,34 @@ class SmartPasterApp:
             messagebox.showerror("输入错误", "请输入有效的图片数量")
             return
 
-        try:
-            images = [(img, Image.open(img)) for img in self.selected_images]
-            horiz, vert = deque(), deque()
+        images = [(img, Image.open(img)) for img in self.selected_images]
+        horiz, vert = deque(), deque()
 
-            for path, img in images:
-                (horiz if img.width >= img.height else vert).append((path, img))
+        for path, img in images:
+            (horiz if img.width >= img.height else vert).append((path, img))
 
-            batches = [list() for _ in range(math.ceil(len(images) / count_per_grid))]
-            for i, group in enumerate(horiz + vert):
-                batches[i % len(batches)].append(group)
+        batches = [list() for _ in range(math.ceil(len(images) / count_per_grid))]
+        for i, group in enumerate(horiz + vert):
+            batches[i % len(batches)].append(group)
 
-            for idx, batch in enumerate(batches):
-                out_img, meta = self.create_grid(batch)
-                img_name = f"拼接{idx + 1}.png"
-                json_name = f"拼接{idx + 1}.json"
-                out_img.save(os.path.join(self.merge_dir, img_name))
-                with open(os.path.join(self.merge_dir, json_name), 'w', encoding='utf-8') as f:
-                    json.dump(meta, f, indent=2, ensure_ascii=False)
+        # 生成拼接图并保存
+        for idx, batch in enumerate(batches):
+            out_img, meta = self.create_grid(batch)
+            img_name = f"拼接{idx + 1}.png"
+            json_name = f"拼接{idx + 1}.json"
 
-            messagebox.showinfo("完成", f"拼接完成，共生成 {len(batches)} 张拼接图")
-        except Exception as e:
-            messagebox.showerror("错误", f"拼接失败: {e}")
+            img_path = os.path.join(self.merge_dir, img_name)
+            out_img.save(img_path)
+
+            # 保存 JSON 文件
+            json_path = os.path.join(self.merge_dir, json_name)
+            with open(json_path, 'w', encoding='utf-8') as f:
+                json.dump(meta, f, indent=2, ensure_ascii=False)
+
+            print(f"拼接图保存到: {os.path.abspath(img_path)}")
+            print(f"JSON 文件保存到: {os.path.abspath(json_path)}")
+
+        messagebox.showinfo("完成", f"拼接完成，共生成 {len(batches)} 张拼接图")
 
     def create_grid(self, batch):
         cols = math.ceil(math.sqrt(len(batch)))
@@ -130,14 +136,12 @@ class SmartPasterApp:
                     break
                 path, img = batch[idx]
                 grid_img.paste(img, (x, y))
-                dpi = img.info.get("dpi", (72, 72))
-                dpi = [float(d) for d in dpi]  # 修复 IFDRational 序列化问题
                 metadata.append({
                     "filename": os.path.basename(path),
                     "position": [x, y],
                     "size": [img.width, img.height],
                     "original_mode": img.mode,
-                    "dpi": dpi,
+                    "dpi": img.info.get("dpi", (72, 72)),
                     "format": os.path.splitext(path)[1][1:].lower()
                 })
                 x += widths[c]
@@ -167,7 +171,7 @@ class SmartPasterApp:
 
             if item.get("original_mode"):
                 region = region.convert(item["original_mode"])
-            dpi = tuple(item.get("dpi", (72, 72)))
+            dpi = item.get("dpi", (72, 72))
 
             name, ext = os.path.splitext(item["filename"])
             new_name = f"{name}s.{item['format']}"
