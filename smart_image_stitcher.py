@@ -1,6 +1,7 @@
 import os
 import math
 import json
+import sys
 from tkinter import Tk, Label, Button, Entry, messagebox, filedialog, ttk
 from tkinterdnd2 import DND_FILES, TkinterDnD
 from PIL import Image
@@ -16,10 +17,16 @@ class SmartPasterApp:
 
         self.selected_images = []
 
-        # 设置默认文件夹
-        self.base_dir = os.path.dirname(os.path.abspath(__file__))
-        self.merge_dir = os.path.join(self.base_dir, "拼接")
-        self.restore_dir = os.path.join(self.base_dir, "拆分")
+        # 设置默认文件夹，兼容 PyInstaller
+        if getattr(sys, 'frozen', False):
+            base_dir = sys._MEIPASS
+            self.app_dir = os.path.dirname(sys.executable)
+        else:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            self.app_dir = base_dir
+
+        self.merge_dir = os.path.join(self.app_dir, "拼接")
+        self.restore_dir = os.path.join(self.app_dir, "拆分")
         os.makedirs(self.merge_dir, exist_ok=True)
         os.makedirs(self.restore_dir, exist_ok=True)
 
@@ -73,11 +80,6 @@ class SmartPasterApp:
             self.selected_images.extend(images)
             messagebox.showinfo("拖拽添加", f"已添加 {len(images)} 张图片，共 {len(self.selected_images)} 张")
 
-    def get_next_image_index(self):
-        existing = [f for f in os.listdir(self.merge_dir) if re.match(r"拼接(\d+)\\.png", f)]
-        indices = [int(re.findall(r"拼接(\d+)\\.png", f)[0]) for f in existing if re.findall(r"拼接(\d+)\\.png", f)]
-        return max(indices, default=0) + 1
-
     def start_merge(self):
         try:
             count_per_grid = int(self.image_per_grid_entry.get())
@@ -97,20 +99,25 @@ class SmartPasterApp:
         for i, group in enumerate(horiz + vert):
             batches[i % len(batches)].append(group)
 
-        start_idx = self.get_next_image_index()
+        # 查找已有拼接编号
+        existing = [f for f in os.listdir(self.merge_dir) if re.match(r"拼接(\d+)\.png", f)]
+        max_idx = 0
+        for fname in existing:
+            m = re.match(r"拼接(\d+)\.png", fname)
+            if m:
+                max_idx = max(max_idx, int(m.group(1)))
 
-        for i, batch in enumerate(batches):
+        for batch_idx, batch in enumerate(batches):
             out_img, meta = self.create_grid(batch)
-            img_name = f"拼接{start_idx + i}.png"
-            json_name = f"拼接{start_idx + i}.json"
+            img_num = max_idx + batch_idx + 1
+            img_name = f"拼接{img_num}.png"
+            json_name = f"拼接{img_num}.json"
             img_path = os.path.join(self.merge_dir, img_name)
-            json_path = os.path.join(self.merge_dir, json_name)
             out_img.save(img_path)
-            with open(json_path, 'w', encoding='utf-8') as f:
-                json.dump(meta, f, indent=2, ensure_ascii=False)
-            print(f"保存拼接图片: {img_path}")
+            with open(os.path.join(self.merge_dir, json_name), 'w', encoding='utf-8') as f:
+                json.dump(meta, f, indent=2, ensure_ascii=False, default=str)
 
-        messagebox.showinfo("完成", f"拼接完成，共生成 {len(batches)} 张拼接图")
+        messagebox.showinfo("完成", f"拼接完成，共生成 {len(batches)} 张拼接图\n保存位置: {self.merge_dir}")
 
     def create_grid(self, batch):
         cols = math.ceil(math.sqrt(len(batch)))
@@ -159,7 +166,7 @@ class SmartPasterApp:
             if not os.path.exists(json_path):
                 continue
             self.restore_one(png_path, json_path)
-        messagebox.showinfo("完成", f"所有拼接图已还原")
+        messagebox.showinfo("完成", f"所有拼接图已还原\n保存位置: {self.restore_dir}")
 
     def restore_one(self, grid_path, meta_path):
         with open(meta_path, 'r', encoding='utf-8') as f:
