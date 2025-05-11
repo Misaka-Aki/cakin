@@ -1,4 +1,5 @@
 import os
+import sys
 import math
 import json
 from tkinter import Tk, Label, Button, Entry, messagebox, filedialog, ttk
@@ -15,8 +16,12 @@ class SmartPasterApp:
 
         self.selected_images = []
 
-        # 设置默认文件夹
-        self.base_dir = os.path.dirname(os.path.abspath(__file__))
+        # 设置默认文件夹（兼容exe打包路径）
+        if getattr(sys, 'frozen', False):
+            self.base_dir = os.path.dirname(sys.executable)
+        else:
+            self.base_dir = os.path.dirname(os.path.abspath(__file__))
+
         self.merge_dir = os.path.join(self.base_dir, "拼接")
         self.restore_dir = os.path.join(self.base_dir, "拆分")
         os.makedirs(self.merge_dir, exist_ok=True)
@@ -91,23 +96,22 @@ class SmartPasterApp:
         for i, group in enumerate(horiz + vert):
             batches[i % len(batches)].append(group)
 
-        # 生成拼接图并保存
         for idx, batch in enumerate(batches):
             out_img, meta = self.create_grid(batch)
             img_name = f"拼接{idx + 1}.png"
             json_name = f"拼接{idx + 1}.json"
-
             img_path = os.path.join(self.merge_dir, img_name)
             json_path = os.path.join(self.merge_dir, json_name)
             out_img.save(img_path)
 
-            # 保存 JSON 文件
+            # 过滤不能序列化的值
+            for item in meta:
+                if isinstance(item.get("dpi"), tuple):
+                    item["dpi"] = [float(x) for x in item["dpi"]]
+
             with open(json_path, 'w', encoding='utf-8') as f:
                 json.dump(meta, f, indent=2, ensure_ascii=False)
-
-            # 输出拼接结果的路径
-            print(f"拼接图保存到: {os.path.abspath(img_path)}")
-            print(f"JSON 文件保存到: {os.path.abspath(json_path)}")
+            print(f"已保存: {img_path}")
 
         messagebox.showinfo("完成", f"拼接完成，共生成 {len(batches)} 张拼接图")
 
@@ -137,11 +141,13 @@ class SmartPasterApp:
                     break
                 path, img = batch[idx]
                 grid_img.paste(img, (x, y))
+                dpi = img.info.get("dpi", (72.0, 72.0))
                 metadata.append({
                     "filename": os.path.basename(path),
                     "position": [x, y],
                     "size": [img.width, img.height],
                     "original_mode": img.mode,
+                    "dpi": [float(d) for d in dpi],
                     "format": os.path.splitext(path)[1][1:].lower()
                 })
                 x += widths[c]
@@ -171,11 +177,11 @@ class SmartPasterApp:
 
             if item.get("original_mode"):
                 region = region.convert(item["original_mode"])
+            dpi = item.get("dpi", [72.0, 72.0])
 
-            # 直接保存拆分后的图片，忽略 DPI 相关处理
             name, ext = os.path.splitext(item["filename"])
             new_name = f"{name}s.{item['format']}"
-            region.save(os.path.join(self.restore_dir, new_name))
+            region.save(os.path.join(self.restore_dir, new_name), dpi=tuple(dpi))
 
 if __name__ == '__main__':
     root = TkinterDnD.Tk()
