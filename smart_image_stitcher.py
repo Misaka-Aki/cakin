@@ -2,6 +2,7 @@ import os
 import math
 import json
 from tkinter import Tk, Label, Button, Entry, messagebox, filedialog, ttk
+from tkinterdnd2 import DND_FILES, TkinterDnD
 from PIL import Image
 from collections import deque
 
@@ -11,6 +12,8 @@ class SmartPasterApp:
         root.title("智能拼图还原工具")
         root.geometry("600x400")
         self.init_ui()
+
+        self.selected_images = []
 
         # 设置默认文件夹
         self.base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -32,10 +35,13 @@ class SmartPasterApp:
         self.init_restore_tab()
 
     def init_merge_tab(self):
-        self.selected_images = []
-
         ttk.Label(self.merge_tab, text="选择需要拼接的图片：").pack(pady=5)
         Button(self.merge_tab, text="选择图片", command=self.select_images).pack(pady=5)
+
+        self.drop_area = Label(self.merge_tab, text="或将图片拖拽到此区域", relief="ridge", borderwidth=2, width=50, height=5)
+        self.drop_area.pack(pady=10)
+        self.drop_area.drop_target_register(DND_FILES)
+        self.drop_area.dnd_bind('<<Drop>>', self.on_drop)
 
         ttk.Label(self.merge_tab, text="每张拼接图包含的图片数量：").pack(pady=5)
         self.image_per_grid_entry = Entry(self.merge_tab)
@@ -59,6 +65,13 @@ class SmartPasterApp:
         else:
             messagebox.showwarning("未选择", "未选择任何图片")
 
+    def on_drop(self, event):
+        dropped = self.root.tk.splitlist(event.data)
+        images = [f for f in dropped if os.path.isfile(f) and f.lower().endswith((".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tiff"))]
+        if images:
+            self.selected_images.extend(images)
+            messagebox.showinfo("拖拽添加", f"已添加 {len(images)} 张图片，共 {len(self.selected_images)} 张")
+
     def start_merge(self):
         try:
             count_per_grid = int(self.image_per_grid_entry.get())
@@ -68,9 +81,13 @@ class SmartPasterApp:
             messagebox.showerror("输入错误", "请输入有效的图片数量")
             return
 
-        images = [(img, Image.open(img)) for img in self.selected_images]
-        horiz, vert = deque(), deque()
+        try:
+            images = [(img, Image.open(img)) for img in self.selected_images]
+        except Exception as e:
+            messagebox.showerror("打开图片错误", str(e))
+            return
 
+        horiz, vert = deque(), deque()
         for path, img in images:
             (horiz if img.width >= img.height else vert).append((path, img))
 
@@ -79,12 +96,15 @@ class SmartPasterApp:
             batches[i % len(batches)].append(group)
 
         for idx, batch in enumerate(batches):
-            out_img, meta = self.create_grid(batch)
-            img_name = f"拼接{idx + 1}.png"
-            json_name = f"拼接{idx + 1}.json"
-            out_img.save(os.path.join(self.merge_dir, img_name))
-            with open(os.path.join(self.merge_dir, json_name), 'w', encoding='utf-8') as f:
-                json.dump(meta, f, indent=2, ensure_ascii=False)
+            try:
+                out_img, meta = self.create_grid(batch)
+                img_name = f"拼接{idx + 1}.png"
+                json_name = f"拼接{idx + 1}.json"
+                out_img.save(os.path.join(self.merge_dir, img_name))
+                with open(os.path.join(self.merge_dir, json_name), 'w', encoding='utf-8') as f:
+                    json.dump(meta, f, indent=2, ensure_ascii=False)
+            except Exception as e:
+                messagebox.showerror("拼接错误", f"第 {idx+1} 张拼接图失败：{e}")
 
         messagebox.showinfo("完成", f"拼接完成，共生成 {len(batches)} 张拼接图")
 
@@ -113,7 +133,10 @@ class SmartPasterApp:
                 if idx >= len(batch):
                     break
                 path, img = batch[idx]
-                grid_img.paste(img, (x, y))
+                try:
+                    grid_img.paste(img, (x, y))
+                except Exception as e:
+                    print(f"粘贴失败：{path}, 错误：{e}")
                 metadata.append({
                     "filename": os.path.basename(path),
                     "position": [x, y],
@@ -147,7 +170,6 @@ class SmartPasterApp:
             w, h = item["size"]
             region = grid.crop((x, y, x + w, y + h))
 
-            # 设置颜色模式与DPI
             if item.get("original_mode"):
                 region = region.convert(item["original_mode"])
             dpi = item.get("dpi", (72, 72))
@@ -157,6 +179,6 @@ class SmartPasterApp:
             region.save(os.path.join(self.restore_dir, new_name), dpi=dpi)
 
 if __name__ == '__main__':
-    root = Tk()
+    root = TkinterDnD.Tk()
     app = SmartPasterApp(root)
     root.mainloop()
