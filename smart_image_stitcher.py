@@ -1,10 +1,13 @@
 import os
 import math
 import json
+import logging
 from tkinter import Tk, Label, Button, Entry, messagebox, filedialog, ttk
 from tkinterdnd2 import DND_FILES, TkinterDnD
 from PIL import Image
 from collections import deque
+
+logging.basicConfig(filename='app.log', level=logging.DEBUG, format='%(asctime)s %(levelname)s:%(message)s')
 
 class SmartPasterApp:
     def __init__(self, root):
@@ -16,7 +19,10 @@ class SmartPasterApp:
         self.selected_images = []
 
         # 设置默认文件夹
-        self.base_dir = os.path.dirname(os.path.abspath(__file__))
+        try:
+            self.base_dir = os.path.dirname(os.path.abspath(__file__))
+        except NameError:
+            self.base_dir = os.getcwd()
         self.merge_dir = os.path.join(self.base_dir, "拼接")
         self.restore_dir = os.path.join(self.base_dir, "拆分")
         os.makedirs(self.merge_dir, exist_ok=True)
@@ -91,20 +97,26 @@ class SmartPasterApp:
         for i, group in enumerate(horiz + vert):
             batches[i % len(batches)].append(group)
 
-        existing_indices = [
-            int(f[2:].split('.')[0])
-            for f in os.listdir(self.merge_dir)
-            if f.startswith("拼接") and f.endswith(".png") and f[2:].split('.')[0].isdigit()
-        ]
-        start_idx = max(existing_indices, default=0) + 1
+        existing = [f for f in os.listdir(self.merge_dir) if f.startswith("拼接") and f.endswith(".png")]
+        start_index = max([int(f[2:-4]) for f in existing if f[2:-4].isdigit()] + [0])
 
-        for i, batch in enumerate(batches):
+        for idx, batch in enumerate(batches):
             out_img, meta = self.create_grid(batch)
-            img_name = f"拼接{start_idx + i}.png"
-            json_name = f"拼接{start_idx + i}.json"
-            out_img.save(os.path.join(self.merge_dir, img_name))
-            with open(os.path.join(self.merge_dir, json_name), 'w', encoding='utf-8') as f:
-                json.dump(meta, f, indent=2, ensure_ascii=False)
+            num = start_index + idx + 1
+            img_name = f"拼接{num}.png"
+            json_name = f"拼接{num}.json"
+            img_path = os.path.join(self.merge_dir, img_name)
+            json_path = os.path.join(self.merge_dir, json_name)
+            out_img.save(img_path)
+            try:
+                for item in meta:
+                    if isinstance(item.get("dpi"), tuple):
+                        item["dpi"] = [float(d) for d in item["dpi"]]
+                with open(json_path, 'w', encoding='utf-8') as f:
+                    json.dump(meta, f, indent=2, ensure_ascii=False)
+                logging.info(f"保存拼接图片：{img_path}")
+            except Exception as e:
+                logging.error(f"保存 JSON 出错: {e}")
 
         messagebox.showinfo("完成", f"拼接完成，共生成 {len(batches)} 张拼接图")
 
@@ -134,17 +146,19 @@ class SmartPasterApp:
                     break
                 path, img = batch[idx]
                 grid_img.paste(img, (x, y))
-                meta = {
+                dpi = img.info.get("dpi", (72, 72))
+                try:
+                    dpi = [float(d) for d in dpi]
+                except Exception:
+                    dpi = [72, 72]
+                metadata.append({
                     "filename": os.path.basename(path),
                     "position": [x, y],
                     "size": [img.width, img.height],
                     "original_mode": img.mode,
+                    "dpi": dpi,
                     "format": os.path.splitext(path)[1][1:].lower()
-                }
-                dpi = img.info.get("dpi")
-                if dpi and isinstance(dpi, tuple):
-                    meta["dpi"] = [float(dpi[0]), float(dpi[1])]
-                metadata.append(meta)
+                })
                 x += widths[c]
             y += heights[r]
         return grid_img, metadata
@@ -158,28 +172,24 @@ class SmartPasterApp:
             json_path = os.path.join(self.merge_dir, json_file)
             if not os.path.exists(json_path):
                 continue
-            if self.restore_one(png_path, json_path):
-                print(f"还原完成：{png_path}")
+            try:
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    meta = json.load(f)
+            except Exception as e:
+                logging.error(f"读取 JSON 出错: {e}")
+                continue
+            already_restored = set(os.listdir(self.restore_dir))
+            for item in meta:
+                name, ext = os.path.splitext(item["filename"])
+                new_name = f"{name}s.{item['format']}"
+                if new_name in already_restored:
+                    continue
+                self.restore_one(png_path, item, new_name)
         messagebox.showinfo("完成", f"所有拼接图已还原")
 
-    def restore_one(self, grid_path, meta_path):
-        with open(meta_path, 'r', encoding='utf-8') as f:
-            meta = json.load(f)
-
-        all_exist = True
-        for item in meta:
-            name, ext = os.path.splitext(item["filename"])
-            new_name = f"{name}s.{item['format']}"
-            if not os.path.exists(os.path.join(self.restore_dir, new_name)):
-                all_exist = False
-                break
-
-        if all_exist:
-            print(f"跳过：{grid_path}，已有所有拆分图片")
-            return False
-
-        grid = Image.open(grid_path)
-        for item in meta:
+    def restore_one(self, grid_path, item, new_name):
+        try:
+            grid = Image.open(grid_path)
             x, y = item["position"]
             w, h = item["size"]
             region = grid.crop((x, y, x + w, y + h))
@@ -187,16 +197,15 @@ class SmartPasterApp:
             if item.get("original_mode"):
                 region = region.convert(item["original_mode"])
 
-            fmt = item['format']
-            if region.mode == 'RGBA' and fmt.lower() in ['jpg', 'jpeg']:
-                region = region.convert('RGB')
-
-            dpi = tuple(item.get("dpi", (72, 72)))
-            name, ext = os.path.splitext(item["filename"])
-            new_name = f"{name}s.{fmt}"
+            ext = item['format'].lower()
             save_path = os.path.join(self.restore_dir, new_name)
-            region.save(save_path, dpi=dpi)
-        return True
+            if ext == 'jpg':
+                ext = 'jpeg'
+
+            region.save(save_path, format=ext.upper())
+            logging.info(f"还原图片保存：{save_path}")
+        except Exception as e:
+            logging.error(f"还原图片失败: {e}")
 
 if __name__ == '__main__':
     root = TkinterDnD.Tk()
