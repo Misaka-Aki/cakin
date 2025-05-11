@@ -5,6 +5,7 @@ from tkinter import Tk, Label, Button, Entry, messagebox, filedialog, ttk
 from tkinterdnd2 import DND_FILES, TkinterDnD
 from PIL import Image
 from collections import deque
+import sys
 
 class SmartPasterApp:
     def __init__(self, root):
@@ -15,7 +16,6 @@ class SmartPasterApp:
 
         self.selected_images = []
 
-        # 设置默认文件夹
         if hasattr(sys, '_MEIPASS'):
             self.base_dir = os.path.dirname(sys.executable)
         else:
@@ -109,12 +109,8 @@ class SmartPasterApp:
             idx = start_index + i
             img_name = f"拼接{idx}.png"
             json_name = f"拼接{idx}.json"
-            img_path = os.path.join(self.merge_dir, img_name)
-            json_path = os.path.join(self.merge_dir, json_name)
-
-            # 保存拼接图片
-            out_img.save(img_path)
-            with open(json_path, 'w', encoding='utf-8') as f:
+            out_img.save(os.path.join(self.merge_dir, img_name))
+            with open(os.path.join(self.merge_dir, json_name), 'w', encoding='utf-8') as f:
                 json.dump(meta, f, indent=2, ensure_ascii=False)
 
         messagebox.showinfo("完成", f"拼接完成，共生成 {len(batches)} 张拼接图")
@@ -162,24 +158,32 @@ class SmartPasterApp:
             json_file = f"{base_name}.json"
             png_path = os.path.join(self.merge_dir, png_file)
             json_path = os.path.join(self.merge_dir, json_file)
-
             if not os.path.exists(json_path):
                 continue
 
-            # 检查拆分文件夹内是否已经存在该拆分图片
-            split_img_name = f"{base_name}s.png"
-            split_img_path = os.path.join(self.restore_dir, split_img_name)
-            if os.path.exists(split_img_path):
-                print(f"跳过拆分：{split_img_name}，该图片已存在")
-                continue  # 跳过已拆分的图片
+            with open(json_path, 'r', encoding='utf-8') as f:
+                meta = json.load(f)
 
-            # 进行拆分
-            self.restore_one(png_path, json_path)
+            # 检查是否所有拆分图已存在
+            all_exist = True
+            for item in meta:
+                name, _ = os.path.splitext(item["filename"])
+                new_name = f"{name}s.png"
+                if not os.path.exists(os.path.join(self.restore_dir, new_name)):
+                    all_exist = False
+                    break
+
+            if all_exist:
+                continue  # 跳过已还原的拼接图
+
+            self.restore_one(png_path, json_path, meta)
+
         messagebox.showinfo("完成", f"所有拼接图已还原")
 
-    def restore_one(self, grid_path, meta_path):
-        with open(meta_path, 'r', encoding='utf-8') as f:
-            meta = json.load(f)
+    def restore_one(self, grid_path, meta_path, meta=None):
+        if meta is None:
+            with open(meta_path, 'r', encoding='utf-8') as f:
+                meta = json.load(f)
         grid = Image.open(grid_path)
         for item in meta:
             x, y = item["position"]
@@ -194,7 +198,6 @@ class SmartPasterApp:
             region.save(os.path.join(self.restore_dir, new_name))
 
 if __name__ == '__main__':
-    import sys
     root = TkinterDnD.Tk()
     app = SmartPasterApp(root)
     root.mainloop()
