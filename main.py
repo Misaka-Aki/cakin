@@ -1,15 +1,23 @@
 import os
 import math
 import json
-from tkinter import Tk, Label, Button, filedialog, messagebox, ttk
+from tkinter import Tk, Label, Button, Entry, messagebox, ttk
 from PIL import Image
+from collections import deque
 
-class PasterApp:
+class SmartPasterApp:
     def __init__(self, root):
         self.root = root
-        root.title("拼图还原助手")
-        root.geometry("600x350")
+        root.title("智能拼图还原工具")
+        root.geometry("600x400")
         self.init_ui()
+
+        # 设置默认文件夹
+        self.base_dir = os.path.dirname(os.path.abspath(__file__))
+        self.merge_dir = os.path.join(self.base_dir, "拼接")
+        self.restore_dir = os.path.join(self.base_dir, "拆分")
+        os.makedirs(self.merge_dir, exist_ok=True)
+        os.makedirs(self.restore_dir, exist_ok=True)
 
     def init_ui(self):
         notebook = ttk.Notebook(self.root)
@@ -24,69 +32,71 @@ class PasterApp:
         self.init_restore_tab()
 
     def init_merge_tab(self):
-        self.image_paths = []
-        self.output_path = ""
+        self.selected_images = []
 
-        ttk.Label(self.merge_tab, text="选择要拼接的图片").pack(pady=10)
-        Button(self.merge_tab, text="选择图片", command=self.select_images).pack()
-        Button(self.merge_tab, text="选择保存文件夹", command=self.select_output_folder).pack(pady=10)
-        Button(self.merge_tab, text="选择保存文件名", command=self.select_output_filename).pack(pady=10)
+        ttk.Label(self.merge_tab, text="选择需要拼接的图片：").pack(pady=5)
+        Button(self.merge_tab, text="选择图片", command=self.select_images).pack(pady=5)
+
+        ttk.Label(self.merge_tab, text="每张拼接图包含的图片数量：").pack(pady=5)
+        self.image_per_grid_entry = Entry(self.merge_tab)
+        self.image_per_grid_entry.insert(0, "9")
+        self.image_per_grid_entry.pack(pady=5)
+
         Button(self.merge_tab, text="开始拼接", command=self.start_merge).pack(pady=10)
 
     def init_restore_tab(self):
-        self.grid_path = ""
-        self.meta_path = ""
-        self.restore_output_dir = ""
-
-        ttk.Label(self.restore_tab, text="选择拼接图和元数据").pack(pady=10)
-        Button(self.restore_tab, text="选择拼接图(.png)", command=self.select_grid).pack()
-        Button(self.restore_tab, text="选择元数据(.json)", command=self.select_metadata).pack()
-        Button(self.restore_tab, text="选择输出文件夹", command=self.select_output_dir).pack()
-        Button(self.restore_tab, text="开始还原", command=self.start_restore).pack(pady=10)
+        Button(self.restore_tab, text="开始还原所有拼接图", command=self.start_restore).pack(pady=20)
 
     def select_images(self):
-        self.image_paths = filedialog.askopenfilenames(filetypes=[("Images", "*.png;*.jpg;*.jpeg")])
-        if self.image_paths:
-            messagebox.showinfo("选中图片数", f"共选中 {len(self.image_paths)} 张图片")
-
-    def select_output_folder(self):
-        self.output_folder = filedialog.askdirectory()
-        if self.output_folder:
-            messagebox.showinfo("文件夹选中", f"已选择输出文件夹：{self.output_folder}")
-
-    def select_output_filename(self):
-        self.output_filename = filedialog.asksaveasfilename(defaultextension=".png", filetypes=[("PNG 图像", "*.png")])
-        if self.output_filename:
-            messagebox.showinfo("文件名选中", f"已选择输出文件名：{self.output_filename}")
+        self.selected_images = list(
+            filedialog.askopenfilenames(filetypes=[("Images", "*.jpg;*.jpeg;*.png")])
+        )
+        messagebox.showinfo("选中图片", f"已选中 {len(self.selected_images)} 张图片")
 
     def start_merge(self):
-        if not self.image_paths or not self.output_filename:
-            messagebox.showerror("错误", "请先选择图片和保存文件名")
-            return
-        json_path = self.output_filename.replace(".png", ".json")
         try:
-            self.merge_images(self.image_paths, self.output_filename, json_path)
-            messagebox.showinfo("完成", f"拼接完成！\n图片: {self.output_filename}\n数据: {json_path}")
-        except Exception as e:
-            messagebox.showerror("拼接失败", str(e))
+            count_per_grid = int(self.image_per_grid_entry.get())
+            if count_per_grid <= 0:
+                raise ValueError
+        except ValueError:
+            messagebox.showerror("输入错误", "请输入有效的图片数量")
+            return
 
-    def merge_images(self, image_paths, output_path, metadata_path):
-        images = [Image.open(p).convert("RGBA") for p in image_paths]
-        count = len(images)
-        cols = math.ceil(math.sqrt(count))
-        rows = math.ceil(count / cols)
+        images = [(img, Image.open(img)) for img in self.selected_images]
+        horiz, vert = deque(), deque()
 
-        col_widths = [0] * cols
-        row_heights = [0] * rows
+        for path, img in images:
+            (horiz if img.width >= img.height else vert).append((path, img))
 
-        for idx, img in enumerate(images):
+        batches = [list() for _ in range(math.ceil(len(images) / count_per_grid))]
+        for i, group in enumerate(horiz + vert):
+            batches[i % len(batches)].append(group)
+
+        for idx, batch in enumerate(batches):
+            out_img, meta = self.create_grid(batch)
+            img_name = f"拼接{idx + 1}.png"
+            json_name = f"拼接{idx + 1}.json"
+            out_img.save(os.path.join(self.merge_dir, img_name))
+            with open(os.path.join(self.merge_dir, json_name), 'w', encoding='utf-8') as f:
+                json.dump(meta, f, indent=2, ensure_ascii=False)
+
+        messagebox.showinfo("完成", f"拼接完成，共生成 {len(batches)} 张拼接图")
+
+    def create_grid(self, batch):
+        cols = math.ceil(math.sqrt(len(batch)))
+        rows = math.ceil(len(batch) / cols)
+
+        widths = [0] * cols
+        heights = [0] * rows
+
+        for idx, (_, img) in enumerate(batch):
             r, c = divmod(idx, cols)
-            col_widths[c] = max(col_widths[c], img.width)
-            row_heights[r] = max(row_heights[r], img.height)
+            widths[c] = max(widths[c], img.width)
+            heights[r] = max(heights[r], img.height)
 
-        total_width = sum(col_widths)
-        total_height = sum(row_heights)
-        result = Image.new("RGBA", (total_width, total_height), (255, 255, 255, 0))
+        total_width = sum(widths)
+        total_height = sum(heights)
+        grid_img = Image.new("RGBA", (total_width, total_height), (255, 255, 255, 0))
 
         metadata = []
         y = 0
@@ -94,55 +104,53 @@ class PasterApp:
             x = 0
             for c in range(cols):
                 idx = r * cols + c
-                if idx >= count:
+                if idx >= len(batch):
                     break
-                img = images[idx]
-                result.paste(img, (x, y))
+                path, img = batch[idx]
+                grid_img.paste(img, (x, y))
                 metadata.append({
-                    "filename": os.path.basename(image_paths[idx]),
+                    "filename": os.path.basename(path),
                     "position": [x, y],
-                    "size": [img.width, img.height]
+                    "size": [img.width, img.height],
+                    "original_mode": img.mode,
+                    "dpi": img.info.get("dpi", (72, 72)),
+                    "format": os.path.splitext(path)[1][1:].lower()
                 })
-                x += col_widths[c]
-            y += row_heights[r]
-
-        result.save(output_path)
-        with open(metadata_path, 'w', encoding='utf-8') as f:
-            json.dump(metadata, f, indent=2, ensure_ascii=False)
-
-    def select_grid(self):
-        self.grid_path = filedialog.askopenfilename(filetypes=[("PNG 图像", "*.png")])
-
-    def select_metadata(self):
-        self.meta_path = filedialog.askopenfilename(filetypes=[("JSON 文件", "*.json")])
-
-    def select_output_dir(self):
-        self.restore_output_dir = filedialog.askdirectory()
+                x += widths[c]
+            y += heights[r]
+        return grid_img, metadata
 
     def start_restore(self):
-        if not self.grid_path or not self.meta_path or not self.restore_output_dir:
-            messagebox.showerror("错误", "请先选择拼图、元数据和输出文件夹")
-            return
-        try:
-            self.restore_images(self.grid_path, self.meta_path, self.restore_output_dir)
-            messagebox.showinfo("完成", f"图片已还原至: {self.restore_output_dir}")
-        except Exception as e:
-            messagebox.showerror("还原失败", str(e))
+        merged_files = [f for f in os.listdir(self.merge_dir) if f.endswith(".png")]
+        for png_file in merged_files:
+            base_name = os.path.splitext(png_file)[0]
+            json_file = f"{base_name}.json"
+            png_path = os.path.join(self.merge_dir, png_file)
+            json_path = os.path.join(self.merge_dir, json_file)
+            if not os.path.exists(json_path):
+                continue
+            self.restore_one(png_path, json_path)
+        messagebox.showinfo("完成", f"所有拼接图已还原")
 
-    def restore_images(self, grid_path, meta_path, output_dir):
+    def restore_one(self, grid_path, meta_path):
         with open(meta_path, 'r', encoding='utf-8') as f:
             meta = json.load(f)
-        grid = Image.open(grid_path).convert("RGBA")
+        grid = Image.open(grid_path)
         for item in meta:
             x, y = item["position"]
             w, h = item["size"]
-            crop = grid.crop((x, y, x + w, y + h))
-            out_path = os.path.join(output_dir, item["filename"])
+            region = grid.crop((x, y, x + w, y + h))
 
-            # 所有还原图片统一保存为 PNG 格式
-            crop.save(out_path, "PNG")  # 无论原始格式如何，全部输出为 PNG 格式
+            # 设置颜色模式与DPI
+            if item.get("original_mode"):
+                region = region.convert(item["original_mode"])
+            dpi = item.get("dpi", (72, 72))
 
-if __name__ == "__main__":
+            name, ext = os.path.splitext(item["filename"])
+            new_name = f"{name}s.{item['format']}"
+            region.save(os.path.join(self.restore_dir, new_name), dpi=dpi)
+
+if __name__ == '__main__':
     root = Tk()
-    app = PasterApp(root)
+    app = SmartPasterApp(root)
     root.mainloop()
