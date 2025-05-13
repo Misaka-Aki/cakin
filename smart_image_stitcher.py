@@ -1,11 +1,11 @@
 import os
+import sys
 import math
 import json
 from tkinter import Tk, Label, Button, Entry, messagebox, filedialog, ttk
 from tkinterdnd2 import DND_FILES, TkinterDnD
 from PIL import Image
 from collections import deque
-import sys
 
 class SmartPasterApp:
     def __init__(self, root):
@@ -15,16 +15,10 @@ class SmartPasterApp:
         self.init_ui()
 
         self.selected_images = []
-
-        if hasattr(sys, '_MEIPASS'):
-            self.base_dir = os.path.dirname(sys.executable)
-        else:
-            self.base_dir = os.path.dirname(os.path.abspath(__file__))
-
-        self.merge_dir = os.path.join(self.base_dir, "拼接")
-        self.restore_dir = os.path.join(self.base_dir, "拆分")
-        os.makedirs(self.merge_dir, exist_ok=True)
-        os.makedirs(self.restore_dir, exist_ok=True)
+        self.base_dir = None
+        self.merge_dir = None
+        self.restore_dir = None
+        self.cake_dir = None
 
     def init_ui(self):
         notebook = ttk.Notebook(self.root)
@@ -58,23 +52,33 @@ class SmartPasterApp:
         Button(self.restore_tab, text="开始还原所有拼接图", command=self.start_restore).pack(pady=20)
 
     def select_images(self):
-        self.selected_images = list(
-            filedialog.askopenfilenames(
-                title="选择图片",
-                filetypes=[("图像文件", "*.jpg *.jpeg *.png *.bmp *.webp *.tiff")]
-            )
-        )
-        if self.selected_images:
-            messagebox.showinfo("选中图片", f"已选中 {len(self.selected_images)} 张图片")
+        images = list(filedialog.askopenfilenames(
+            title="选择图片",
+            filetypes=[("图像文件", "*.jpg *.jpeg *.png *.bmp *.webp *.tiff")]
+        ))
+        if images:
+            self.selected_images = images
+            self.set_working_dirs(os.path.dirname(images[0]))
+            messagebox.showinfo("选中图片", f"已选中 {len(images)} 张图片")
         else:
             messagebox.showwarning("未选择", "未选择任何图片")
 
     def on_drop(self, event):
         dropped = self.root.tk.splitlist(event.data)
-        images = [f for f in dropped if os.path.isfile(f) and f.lower().endswith((".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tiff"))]
+        images = [f for f in dropped if os.path.isfile(f) and f.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp', '.webp', '.tiff'))]
         if images:
-            self.selected_images.extend(images)
-            messagebox.showinfo("拖拽添加", f"已添加 {len(images)} 张图片，共 {len(self.selected_images)} 张")
+            self.selected_images = images
+            self.set_working_dirs(os.path.dirname(images[0]))
+            messagebox.showinfo("拖拽添加", f"已添加 {len(images)} 张图片")
+
+    def set_working_dirs(self, base_dir):
+        self.base_dir = base_dir
+        self.merge_dir = os.path.join(self.base_dir, "拼接")
+        self.restore_dir = os.path.join(self.base_dir, "拆分")
+        self.cake_dir = os.path.join(self.base_dir, "蛋糕")
+        os.makedirs(self.merge_dir, exist_ok=True)
+        os.makedirs(self.restore_dir, exist_ok=True)
+        os.makedirs(self.cake_dir, exist_ok=True)
 
     def start_merge(self):
         try:
@@ -152,38 +156,42 @@ class SmartPasterApp:
         return grid_img, metadata
 
     def start_restore(self):
-        merged_files = [f for f in os.listdir(self.merge_dir) if f.endswith(".png")]
-        for png_file in merged_files:
-            base_name = os.path.splitext(png_file)[0]
-            json_file = f"{base_name}.json"
-            png_path = os.path.join(self.merge_dir, png_file)
+        if not os.path.exists(self.cake_dir):
+            messagebox.showerror("错误", "蛋糕文件夹不存在")
+            return
+
+        merged_files = [f for f in os.listdir(self.merge_dir) if f.endswith(".json")]
+        for json_file in merged_files:
             json_path = os.path.join(self.merge_dir, json_file)
-            if not os.path.exists(json_path):
+            png_path = os.path.join(self.cake_dir, json_file.replace(".json", ".png"))
+
+            if not os.path.exists(png_path):
                 continue
 
             with open(json_path, 'r', encoding='utf-8') as f:
-                meta = json.load(f)
+                try:
+                    meta = json.load(f)
+                except Exception as e:
+                    print(f"读取元数据失败: {e}")
+                    continue
 
-            # 检查是否所有拆分图已存在
             all_exist = True
             for item in meta:
                 name, _ = os.path.splitext(item["filename"])
-                new_name = f"{name}s.png"
-                if not os.path.exists(os.path.join(self.restore_dir, new_name)):
+                out_path = os.path.join(self.restore_dir, f"{name}s.png")
+                if not os.path.exists(out_path):
                     all_exist = False
                     break
 
             if all_exist:
-                continue  # 跳过已还原的拼接图
+                print(f"跳过已拆分拼接图: {png_path}")
+                continue
 
-            self.restore_one(png_path, json_path, meta)
+            self.restore_one(png_path, meta)
 
         messagebox.showinfo("完成", f"所有拼接图已还原")
 
-    def restore_one(self, grid_path, meta_path, meta=None):
-        if meta is None:
-            with open(meta_path, 'r', encoding='utf-8') as f:
-                meta = json.load(f)
+    def restore_one(self, grid_path, meta):
         grid = Image.open(grid_path)
         for item in meta:
             x, y = item["position"]
